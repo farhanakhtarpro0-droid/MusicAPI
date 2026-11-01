@@ -4,7 +4,7 @@ import yt_dlp
 
 app = Flask(__name__)
 
-# CORS चालू कर दिया गया है ताकि वेबसाइट और एंड्रॉयड ऐप दोनों इसे बिना सिक्योरिटी एरर के एक्सेस कर सकें
+# CORS चालू कर दिया गया है
 CORS(app)
 
 @app.route('/')
@@ -18,30 +18,32 @@ def search_music():
     if not query:
         return jsonify({"error": "कृपया सर्च के लिए ?q= गाने का नाम डालें"}), 400
 
-    # yt-dlp की सेटिंग्स (सिर्फ डेटा निकालने के लिए, डाउनलोड नहीं)
+    # YouTube Bot Block से बचने के लिए नई सेटिंग्स (User Agent के साथ)
     ydl_opts = {
-        'extract_flat': True, # बहुत तेज़ काम करने के लिए
-        'default_search': 'ytsearch10', # टॉप 10 रिज़ल्ट लाएगा
+        'extract_flat': True,
         'quiet': True,
-        'no_warnings': True # फालतू की वार्निंग छिपाने के लिए
+        'no_warnings': True,
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(query, download=False)
+            # सीधे नाम के बजाय ytsearch10: लगाकर सर्च करेंगे ताकि YouTube ब्लॉक न करे
+            search_query = f"ytsearch10:{query}"
+            info = ydl.extract_info(search_query, download=False)
             results = []
             
             for entry in info.get('entries', []):
                 video_id = entry.get('id')
-                # YouTube का ओरिजिनल हाई-क्वालिटी पोस्टर लिंक
-                poster_url = f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
-                
-                results.append({
-                    "id": video_id,
-                    "title": entry.get('title'),
-                    "poster": poster_url,
-                    "duration": entry.get('duration')
-                })
+                if video_id:  # सिर्फ वही डेटा लेंगे जिसमें सही ID हो
+                    poster_url = f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+                    
+                    results.append({
+                        "id": video_id,
+                        "title": entry.get('title'),
+                        "poster": poster_url,
+                        "duration": entry.get('duration')
+                    })
                 
             return jsonify({"status": "success", "data": results})
     except Exception as e:
@@ -57,12 +59,13 @@ def play_music():
 
     video_url = f"https://www.youtube.com/watch?v={video_id}"
     
-    # सबसे अच्छी ऑडियो क्वालिटी निकालने की सेटिंग
+    # सबसे अच्छी ऑडियो क्वालिटी और Bot Bypass की सेटिंग
     ydl_opts = {
         'format': 'bestaudio/best',
         'quiet': True,
         'no_warnings': True,
-        'noplaylist': True
+        'noplaylist': True,
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     }
 
     try:
