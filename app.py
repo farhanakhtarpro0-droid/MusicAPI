@@ -1,7 +1,11 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import yt_dlp
 
 app = Flask(__name__)
+
+# CORS चालू कर दिया गया है ताकि वेबसाइट और एंड्रॉयड ऐप दोनों इसे बिना सिक्योरिटी एरर के एक्सेस कर सकें
+CORS(app)
 
 @app.route('/')
 def home():
@@ -18,7 +22,8 @@ def search_music():
     ydl_opts = {
         'extract_flat': True, # बहुत तेज़ काम करने के लिए
         'default_search': 'ytsearch10', # टॉप 10 रिज़ल्ट लाएगा
-        'quiet': True
+        'quiet': True,
+        'no_warnings': True # फालतू की वार्निंग छिपाने के लिए
     }
 
     try:
@@ -56,6 +61,7 @@ def play_music():
     ydl_opts = {
         'format': 'bestaudio/best',
         'quiet': True,
+        'no_warnings': True,
         'noplaylist': True
     }
 
@@ -76,4 +82,4 @@ def play_music():
 # सर्वर चलाने के लिए
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
-  
+    
