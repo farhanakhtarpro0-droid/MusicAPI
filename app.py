@@ -46,21 +46,27 @@ def search_music():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-# 2. प्ले API (5 बैकअप सर्वर्स के साथ)
+# 2. प्ले API (Cloudflare बाईपास Headers के साथ)
 @app.route('/play', methods=['GET'])
 def play_music():
     video_id = request.args.get('id')
     if not video_id:
         return jsonify({"error": "कृपया गाने की ID दें ?id=..."}), 400
 
-    # 5 अलग-अलग फ्री Piped API सर्वर्स (अगर एक बंद हो, तो दूसरा काम करेगा)
     piped_instances = [
+        "https://pipedapi.kavin.rocks",
         "https://pipedapi.moomoo.me",
         "https://api.piped.projectsegfau.lt",
-        "https://pipedapi.kavin.rocks",
         "https://piped-api.lunar.icu",
         "https://pipedapi.smnz.de"
     ]
+
+    # सबसे ज़रूरी बदलाव: Cloudflare के गार्ड को बाईपास करने के लिए असली ब्राउज़र की पहचान
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json",
+        "Referer": "https://piped.kavin.rocks/"
+    }
 
     last_error = ""
 
@@ -69,20 +75,18 @@ def play_music():
             print(f"Trying API: {instance}", flush=True)
             api_url = f"{instance}/streams/{video_id}"
             
-            # 5 सेकंड तक इंतज़ार करेगा, नहीं मिला तो अगला सर्वर ट्राई करेगा
-            resp = requests.get(api_url, timeout=5) 
+            # अब हम headers भी साथ भेज रहे हैं
+            resp = requests.get(api_url, headers=headers, timeout=7) 
             
             if resp.status_code == 200:
                 data = resp.json()
                 audio_url = None
                 
-                # m4a या mp4 बेस्ट क्वालिटी ऑडियो ढूँढें
                 for stream in data.get('audioStreams', []):
                     if 'mp4' in stream.get('mimeType', '') or 'm4a' in stream.get('mimeType', ''):
                         audio_url = stream.get('url')
                         break
                 
-                # अगर m4a न मिले, तो जो भी पहला ऑडियो मिले वो दे दो
                 if not audio_url and data.get('audioStreams'):
                     audio_url = data['audioStreams'][0].get('url')
                     
@@ -102,9 +106,8 @@ def play_music():
         except Exception as e:
             print(f"ERROR on {instance}: {str(e)}", flush=True)
             last_error = str(e)
-            continue # एरर आए तो रुको मत, लिस्ट का अगला सर्वर ट्राई करो
+            continue 
 
-    # अगर पाँचों सर्वर फेल हो जाएँ
     return jsonify({"status": "error", "message": f"सभी बैकअप सर्वर फेल हो गए। अंतिम एरर: {last_error}"}), 404
 
 if __name__ == '__main__':
