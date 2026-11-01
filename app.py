@@ -21,7 +21,8 @@ def search_music():
         'extract_flat': True,
         'quiet': True,
         'no_warnings': True,
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        # सर्च को भी सुरक्षित रखने के लिए iOS क्लाइंट
+        'extractor_args': {'youtube': {'player_client': ['ios']}}
     }
 
     try:
@@ -51,15 +52,13 @@ def play_music():
 
     video_url = f"https://www.youtube.com/watch?v={video_id}"
     
-    # नया और फिक्स किया हुआ ydl_opts
     ydl_opts = {
-        'format': 'bestaudio/best',
+        'format': 'm4a/bestaudio/best', # Android के लिए सबसे तेज़ फॉर्मेट
         'quiet': True,
         'no_warnings': True,
         'noplaylist': True,
-        # 'android' को हटा दिया गया है क्योंकि YouTube उसे ब्लॉक कर रहा है। 
-        # अब हम 'tv' (Smart TV) और 'web' का इस्तेमाल करेंगे जो ज्यादा सुरक्षित है।
-        'extractor_args': {'youtube': {'player_client': ['tv', 'web']}}
+        # Render IP ब्लॉक को तोड़ने के लिए iOS (iPhone) और वेब क्रिएटर क्लाइंट का इस्तेमाल
+        'extractor_args': {'youtube': {'player_client': ['ios', 'web_creator']}}
     }
 
     try:
@@ -83,6 +82,7 @@ def play_music():
                     "poster": info.get('thumbnail')
                 })
             else:
+                print(f"FAILED: {video_id} का ऑडियो URL नहीं मिला।", file=sys.stderr)
                 return jsonify({"status": "error", "message": "ऑडियो लिंक नहीं मिला"}), 404
     except Exception as e:
         print("=== PLAY ERROR ===", file=sys.stderr)
