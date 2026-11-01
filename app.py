@@ -11,14 +11,13 @@ CORS(app)
 def home():
     return "Music API is Running Successfully!"
 
-# 1. सर्च API (यह तुरंत गानों की लिस्ट, नाम और पोस्टर देगा)
+# 1. सर्च API
 @app.route('/search', methods=['GET'])
 def search_music():
     query = request.args.get('q')
     if not query:
         return jsonify({"error": "कृपया सर्च के लिए ?q= गाने का नाम डालें"}), 400
 
-    # YouTube Bot Block से बचने के लिए नई सेटिंग्स (User Agent के साथ)
     ydl_opts = {
         'extract_flat': True,
         'quiet': True,
@@ -28,16 +27,14 @@ def search_music():
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # सीधे नाम के बजाय ytsearch10: लगाकर सर्च करेंगे ताकि YouTube ब्लॉक न करे
             search_query = f"ytsearch10:{query}"
             info = ydl.extract_info(search_query, download=False)
             results = []
             
             for entry in info.get('entries', []):
                 video_id = entry.get('id')
-                if video_id:  # सिर्फ वही डेटा लेंगे जिसमें सही ID हो
+                if video_id:
                     poster_url = f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
-                    
                     results.append({
                         "id": video_id,
                         "title": entry.get('title'),
@@ -50,7 +47,7 @@ def search_music():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-# 2. प्ले API (यह गाने का डायरेक्ट ऑडियो लिंक देगा)
+# 2. प्ले API (नए Android Bypass और स्मार्ट URL फाइंडर के साथ)
 @app.route('/play', methods=['GET'])
 def play_music():
     video_id = request.args.get('id')
@@ -59,26 +56,40 @@ def play_music():
 
     video_url = f"https://www.youtube.com/watch?v={video_id}"
     
-    # सबसे अच्छी ऑडियो क्वालिटी और Bot Bypass की सेटिंग
     ydl_opts = {
-        'format': 'bestaudio/best',
+        'format': 'bestaudio[ext=m4a]/bestaudio/best', # m4a फॉर्मेट Android के लिए सबसे अच्छा है
         'quiet': True,
         'no_warnings': True,
         'noplaylist': True,
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        # यह सबसे ज़रूरी सेटिंग है जो YouTube को बताएगी कि यह एक Android डिवाइस है:
+        'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
+        'user_agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36'
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(video_url, download=False)
             
-            return jsonify({
-                "status": "success",
-                "id": video_id,
-                "title": info.get('title'),
-                "audio_url": info.get('url'), # डायरेक्ट ऑडियो स्ट्रीमिंग लिंक
-                "poster": info.get('thumbnail')
-            })
+            # पहले सीधा ऑडियो URL ढूँढने की कोशिश करेंगे
+            audio_url = info.get('url')
+            
+            # अगर सीधा URL नहीं मिला, तो छुपे हुए 'formats' लिस्ट में से सिर्फ ऑडियो वाला लिंक निकालेंगे
+            if not audio_url and 'formats' in info:
+                for f in info['formats']:
+                    if f.get('acodec') != 'none' and f.get('vcodec') == 'none':
+                        audio_url = f.get('url')
+                        break 
+                        
+            if audio_url:
+                return jsonify({
+                    "status": "success",
+                    "id": video_id,
+                    "title": info.get('title'),
+                    "audio_url": audio_url,
+                    "poster": info.get('thumbnail')
+                })
+            else:
+                return jsonify({"status": "error", "message": "ऑडियो लिंक नहीं मिला"}), 404
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
