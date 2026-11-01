@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import yt_dlp
-import traceback  # टर्मिनल में एरर की पूरी डिटेल छापने के लिए
+import traceback
 import sys
 
 app = Flask(__name__)
@@ -41,11 +41,7 @@ def search_music():
                     })
             return jsonify({"status": "success", "data": results})
     except Exception as e:
-        print("=== SEARCH ERROR ===", file=sys.stderr)
-        traceback.print_exc() # टर्मिनल में पूरा एरर छापेगा
-        print("====================", file=sys.stderr)
         return jsonify({"status": "error", "message": str(e)}), 500
-
 
 @app.route('/play', methods=['GET'])
 def play_music():
@@ -55,13 +51,15 @@ def play_music():
 
     video_url = f"https://www.youtube.com/watch?v={video_id}"
     
+    # नया और फिक्स किया हुआ ydl_opts
     ydl_opts = {
         'format': 'bestaudio/best',
         'quiet': True,
         'no_warnings': True,
         'noplaylist': True,
-        'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
-        'user_agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36'
+        # 'android' को हटा दिया गया है क्योंकि YouTube उसे ब्लॉक कर रहा है। 
+        # अब हम 'tv' (Smart TV) और 'web' का इस्तेमाल करेंगे जो ज्यादा सुरक्षित है।
+        'extractor_args': {'youtube': {'player_client': ['tv', 'web']}}
     }
 
     try:
@@ -85,14 +83,13 @@ def play_music():
                     "poster": info.get('thumbnail')
                 })
             else:
-                print(f"FAILED: {video_id} का ऑडियो URL नहीं मिला।", file=sys.stderr)
                 return jsonify({"status": "error", "message": "ऑडियो लिंक नहीं मिला"}), 404
     except Exception as e:
         print("=== PLAY ERROR ===", file=sys.stderr)
-        traceback.print_exc() # टर्मिनल में पूरा एरर छापेगा
+        traceback.print_exc()
         print("==================", file=sys.stderr)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
-           
+    
