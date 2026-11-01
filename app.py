@@ -46,49 +46,66 @@ def search_music():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-# 2. प्ले API (नया Piped API बाईपास सिस्टम)
+# 2. प्ले API (5 बैकअप सर्वर्स के साथ)
 @app.route('/play', methods=['GET'])
 def play_music():
     video_id = request.args.get('id')
     if not video_id:
         return jsonify({"error": "कृपया गाने की ID दें ?id=..."}), 400
 
-    try:
-        # YouTube ब्लॉक से बचने के लिए हम Piped API का सीधा इस्तेमाल करेंगे
-        api_url = f"https://pipedapi.kavin.rocks/streams/{video_id}"
-        resp = requests.get(api_url)
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            audio_url = None
-            
-            # Android के लिए सबसे बेस्ट (m4a/mp4) ऑडियो लिंक ढूँढें
-            for stream in data.get('audioStreams', []):
-                if 'mp4' in stream.get('mimeType', '') or 'm4a' in stream.get('mimeType', ''):
-                    audio_url = stream.get('url')
-                    break
-            
-            # अगर m4a न मिले, तो लिस्ट का पहला ऑडियो लिंक ले लें
-            if not audio_url and data.get('audioStreams'):
-                audio_url = data['audioStreams'][0].get('url')
-                
-            if audio_url:
-                print(f"SUCCESS: {video_id} का ऑडियो Piped API से मिल गया!", flush=True)
-                return jsonify({
-                    "status": "success",
-                    "id": video_id,
-                    "title": data.get('title'),
-                    "audio_url": audio_url,
-                    "poster": data.get('thumbnailUrl')
-                })
-                
-        return jsonify({"status": "error", "message": "ऑडियो लिंक नहीं मिला (Piped API Error)"}), 404
+    # 5 अलग-अलग फ्री Piped API सर्वर्स (अगर एक बंद हो, तो दूसरा काम करेगा)
+    piped_instances = [
+        "https://pipedapi.moomoo.me",
+        "https://api.piped.projectsegfau.lt",
+        "https://pipedapi.kavin.rocks",
+        "https://piped-api.lunar.icu",
+        "https://pipedapi.smnz.de"
+    ]
 
-    except Exception as e:
-        print("=== PLAY ERROR ===", file=sys.stderr)
-        traceback.print_exc()
-        print("==================", file=sys.stderr)
-        return jsonify({"status": "error", "message": str(e)}), 500
+    last_error = ""
+
+    for instance in piped_instances:
+        try:
+            print(f"Trying API: {instance}", flush=True)
+            api_url = f"{instance}/streams/{video_id}"
+            
+            # 5 सेकंड तक इंतज़ार करेगा, नहीं मिला तो अगला सर्वर ट्राई करेगा
+            resp = requests.get(api_url, timeout=5) 
+            
+            if resp.status_code == 200:
+                data = resp.json()
+                audio_url = None
+                
+                # m4a या mp4 बेस्ट क्वालिटी ऑडियो ढूँढें
+                for stream in data.get('audioStreams', []):
+                    if 'mp4' in stream.get('mimeType', '') or 'm4a' in stream.get('mimeType', ''):
+                        audio_url = stream.get('url')
+                        break
+                
+                # अगर m4a न मिले, तो जो भी पहला ऑडियो मिले वो दे दो
+                if not audio_url and data.get('audioStreams'):
+                    audio_url = data['audioStreams'][0].get('url')
+                    
+                if audio_url:
+                    print(f"SUCCESS: {instance} से ऑडियो मिल गया!", flush=True)
+                    return jsonify({
+                        "status": "success",
+                        "id": video_id,
+                        "title": data.get('title'),
+                        "audio_url": audio_url,
+                        "poster": data.get('thumbnailUrl')
+                    })
+            else:
+                print(f"FAILED on {instance}: Status {resp.status_code}", flush=True)
+                last_error = f"Status {resp.status_code}"
+                
+        except Exception as e:
+            print(f"ERROR on {instance}: {str(e)}", flush=True)
+            last_error = str(e)
+            continue # एरर आए तो रुको मत, लिस्ट का अगला सर्वर ट्राई करो
+
+    # अगर पाँचों सर्वर फेल हो जाएँ
+    return jsonify({"status": "error", "message": f"सभी बैकअप सर्वर फेल हो गए। अंतिम एरर: {last_error}"}), 404
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
