@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import yt_dlp
+import requests
 import traceback
 import sys
 
@@ -11,6 +12,7 @@ CORS(app)
 def home():
     return "Music API is Running Successfully!"
 
+# 1. सर्च API (यह बिल्कुल सही काम कर रहा है)
 @app.route('/search', methods=['GET'])
 def search_music():
     query = request.args.get('q')
@@ -21,7 +23,6 @@ def search_music():
         'extract_flat': True,
         'quiet': True,
         'no_warnings': True,
-        # सर्च को भी सुरक्षित रखने के लिए iOS क्लाइंट
         'extractor_args': {'youtube': {'player_client': ['ios']}}
     }
 
@@ -44,46 +45,45 @@ def search_music():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+
+# 2. प्ले API (नया Piped API बाईपास सिस्टम)
 @app.route('/play', methods=['GET'])
 def play_music():
     video_id = request.args.get('id')
     if not video_id:
         return jsonify({"error": "कृपया गाने की ID दें ?id=..."}), 400
 
-    video_url = f"https://www.youtube.com/watch?v={video_id}"
-    
-    ydl_opts = {
-        'format': 'm4a/bestaudio/best', # Android के लिए सबसे तेज़ फॉर्मेट
-        'quiet': True,
-        'no_warnings': True,
-        'noplaylist': True,
-        # Render IP ब्लॉक को तोड़ने के लिए iOS (iPhone) और वेब क्रिएटर क्लाइंट का इस्तेमाल
-        'extractor_args': {'youtube': {'player_client': ['ios', 'web_creator']}}
-    }
-
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(video_url, download=False)
-            audio_url = info.get('url')
+        # YouTube ब्लॉक से बचने के लिए हम Piped API का सीधा इस्तेमाल करेंगे
+        api_url = f"https://pipedapi.kavin.rocks/streams/{video_id}"
+        resp = requests.get(api_url)
+        
+        if resp.status_code == 200:
+            data = resp.json()
+            audio_url = None
             
-            if not audio_url and 'formats' in info:
-                for f in info['formats']:
-                    if f.get('acodec') != 'none' and f.get('vcodec') == 'none':
-                        audio_url = f.get('url')
-                        break 
-                        
+            # Android के लिए सबसे बेस्ट (m4a/mp4) ऑडियो लिंक ढूँढें
+            for stream in data.get('audioStreams', []):
+                if 'mp4' in stream.get('mimeType', '') or 'm4a' in stream.get('mimeType', ''):
+                    audio_url = stream.get('url')
+                    break
+            
+            # अगर m4a न मिले, तो लिस्ट का पहला ऑडियो लिंक ले लें
+            if not audio_url and data.get('audioStreams'):
+                audio_url = data['audioStreams'][0].get('url')
+                
             if audio_url:
-                print(f"SUCCESS: {video_id} का ऑडियो मिल गया!", flush=True)
+                print(f"SUCCESS: {video_id} का ऑडियो Piped API से मिल गया!", flush=True)
                 return jsonify({
                     "status": "success",
                     "id": video_id,
-                    "title": info.get('title'),
+                    "title": data.get('title'),
                     "audio_url": audio_url,
-                    "poster": info.get('thumbnail')
+                    "poster": data.get('thumbnailUrl')
                 })
-            else:
-                print(f"FAILED: {video_id} का ऑडियो URL नहीं मिला।", file=sys.stderr)
-                return jsonify({"status": "error", "message": "ऑडियो लिंक नहीं मिला"}), 404
+                
+        return jsonify({"status": "error", "message": "ऑडियो लिंक नहीं मिला (Piped API Error)"}), 404
+
     except Exception as e:
         print("=== PLAY ERROR ===", file=sys.stderr)
         traceback.print_exc()
